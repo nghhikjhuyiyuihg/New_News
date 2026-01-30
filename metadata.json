@@ -1,0 +1,7 @@
+{
+  "name": "Copy of חדשות אמת - פורטל החדשות שלך",
+  "description": "אתר חדשות מודרני בעיצוב נקי",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
