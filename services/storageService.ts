@@ -1,5 +1,5 @@
 
-import { initializeApp } from "firebase/app";
+import { initializeApp, getApps, getApp } from "firebase/app";
 import { 
   getFirestore, 
   collection, 
@@ -15,7 +15,9 @@ import {
 } from "firebase/firestore";
 import { Article } from '../types';
 
-// חשוב: עליך להחליף את הערכים כאן בערכים האמיתיים מהקונסול של Firebase!
+/**
+ * הגדרות Firebase - עליך להחליף את אלו בנתונים מה-Firebase Console שלך!
+ */
 const firebaseConfig = {
   apiKey: "YOUR_API_KEY",
   authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
@@ -25,21 +27,23 @@ const firebaseConfig = {
   appId: "YOUR_APP_ID"
 };
 
-let db: any;
-let articlesRef: any;
+let db: any = null;
+let articlesRef: any = null;
 
-try {
-  // בדיקה אם המשתמש שכח להזין את הפרטים
-  if (firebaseConfig.apiKey === "YOUR_API_KEY") {
-    console.warn("Firebase Config is not set. Using mock storage.");
-    // כאן אפשר להוסיף לוגיקה זמנית או פשוט לתת לאפליקציה לעלות בלי Firebase
-  } else {
-    const app = initializeApp(firebaseConfig);
+// בדיקה אם המשתמש עדיין לא הגדיר את Firebase
+const isConfigSet = firebaseConfig.apiKey !== "YOUR_API_KEY";
+
+if (isConfigSet) {
+  try {
+    const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
     db = getFirestore(app);
     articlesRef = collection(db, "articles");
+    console.log("Firebase initialized successfully.");
+  } catch (e) {
+    console.error("Firebase failed to initialize:", e);
   }
-} catch (e) {
-  console.error("Firebase initialization failed:", e);
+} else {
+  console.warn("Firebase config is missing. App will run in read-only mode with default data.");
 }
 
 export const getArticlesFromDB = async (): Promise<Article[]> => {
@@ -56,9 +60,11 @@ export const getArticlesFromDB = async (): Promise<Article[]> => {
 
 export const subscribeToArticles = (callback: (articles: Article[]) => void) => {
   if (!articlesRef) {
+    // אם אין Firebase, פשוט נחזיר רשימה ריקה כדי שהאפליקציה תשתמש ב-DEFAULT_ARTICLES
     callback([]);
     return () => {};
   }
+  
   const q = query(articlesRef, orderBy("createdAt", "desc"));
   return onSnapshot(q, (querySnapshot) => {
     const articles = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Article));
@@ -69,32 +75,51 @@ export const subscribeToArticles = (callback: (articles: Article[]) => void) => 
 };
 
 export const addArticleToDB = async (article: Article): Promise<void> => {
-  if (!articlesRef) return;
-  const { id, ...data } = article;
-  if (id) {
-    await setDoc(doc(db, "articles", id), data);
-  } else {
-    await addDoc(articlesRef, data);
+  if (!articlesRef) {
+    console.error("Cannot add article: Firebase not configured.");
+    return;
+  }
+  try {
+    const { id, ...data } = article;
+    if (id && id.length > 5) { // Check if it's a real ID or a random temp one
+      await setDoc(doc(db, "articles", id), data);
+    } else {
+      await addDoc(articlesRef, data);
+    }
+  } catch (e) {
+    console.error("Error adding article:", e);
+    throw e;
   }
 };
 
 export const updateArticleInDB = async (article: Article): Promise<void> => {
   if (!db) return;
-  const { id, ...data } = article;
-  if (!id) return;
-  const articleDoc = doc(db, "articles", id);
-  await updateDoc(articleDoc, { ...data });
+  try {
+    const { id, ...data } = article;
+    if (!id) return;
+    const articleDoc = doc(db, "articles", id);
+    await updateDoc(articleDoc, { ...data });
+  } catch (e) {
+    console.error("Error updating article:", e);
+  }
 };
 
 export const removeArticleFromDB = async (id: string): Promise<void> => {
   if (!db) return;
-  await deleteDoc(doc(db, "articles", id));
+  try {
+    await deleteDoc(doc(db, "articles", id));
+  } catch (e) {
+    console.error("Error removing article:", e);
+  }
 };
 
 export const saveArticlesToDB = async (articles: Article[]): Promise<void> => {
+  if (!articlesRef) return;
   for (const article of articles) {
     await addArticleToDB(article);
   }
 };
 
-export const initDB = async () => {};
+export const initDB = async () => {
+  // פונקציה תואמת לאחור, כיום הכל קורה ב-subscribe
+};
