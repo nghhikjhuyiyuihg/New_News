@@ -1,81 +1,90 @@
 
+import { initializeApp } from "firebase/app";
+import { 
+  getFirestore, 
+  collection, 
+  addDoc, 
+  getDocs, 
+  updateDoc, 
+  doc, 
+  deleteDoc, 
+  query, 
+  orderBy,
+  onSnapshot,
+  setDoc
+} from "firebase/firestore";
 import { Article } from '../types';
 
-const DB_NAME = 'TrueNewsDB';
-const STORE_NAME = 'articles';
-const DB_VERSION = 1;
-
-export const initDB = (): Promise<IDBDatabase> => {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-    request.onupgradeneeded = (event) => {
-      const db = (event.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-      }
-    };
-
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
+/**
+ * מדריך קצר להגדרת Firebase:
+ * 1. היכנס ל-https://console.firebase.google.com/
+ * 2. צור פרויקט חדש (למשל TrueNews)
+ * 3. הוסף אפליקציית Web וקבל את ה-firebaseConfig
+ * 4. בתפריט הצדדי בחר Build -> Firestore Database ולחץ על Create Database
+ * 5. בלשונית Rules, שנה ל- allow read, write: if true; (רק לפיתוח ראשוני!)
+ */
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+  appId: "YOUR_APP_ID"
 };
 
-export const saveArticlesToDB = async (articles: Article[]): Promise<void> => {
-  const db = await initDB();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
-    store.clear();
-    articles.forEach(article => store.add(article));
-    transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error);
-  });
-};
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const articlesRef = collection(db, "articles");
 
 export const getArticlesFromDB = async (): Promise<Article[]> => {
-  const db = await initDB();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, 'readonly');
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.getAll();
-    request.onsuccess = () => {
-      const articles = request.result as Article[];
-      resolve(articles.sort((a, b) => b.createdAt - a.createdAt));
-    };
-    request.onerror = () => reject(request.error);
+  try {
+    const q = query(articlesRef, orderBy("createdAt", "desc"));
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Article));
+  } catch (e) {
+    console.error("Error fetching articles:", e);
+    return [];
+  }
+};
+
+// Real-time listener version - world-class synchronization
+export const subscribeToArticles = (callback: (articles: Article[]) => void) => {
+  const q = query(articlesRef, orderBy("createdAt", "desc"));
+  return onSnapshot(q, (querySnapshot) => {
+    const articles = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Article));
+    callback(articles);
+  }, (error) => {
+    console.error("Snapshot error:", error);
   });
 };
 
 export const addArticleToDB = async (article: Article): Promise<void> => {
-  const db = await initDB();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
-    store.add(article);
-    transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error);
-  });
+  const { id, ...data } = article;
+  // If we have an ID from the client, we use it, otherwise Firestore generates one
+  if (id) {
+    await setDoc(doc(db, "articles", id), data);
+  } else {
+    await addDoc(articlesRef, data);
+  }
 };
 
 export const updateArticleInDB = async (article: Article): Promise<void> => {
-  const db = await initDB();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
-    store.put(article);
-    transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error);
-  });
+  const { id, ...data } = article;
+  if (!id) return;
+  const articleDoc = doc(db, "articles", id);
+  await updateDoc(articleDoc, { ...data });
 };
 
 export const removeArticleFromDB = async (id: string): Promise<void> => {
-  const db = await initDB();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
-    store.delete(id);
-    transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error);
-  });
+  await deleteDoc(doc(db, "articles", id));
 };
+
+export const saveArticlesToDB = async (articles: Article[]): Promise<void> => {
+  for (const article of articles) {
+    await addArticleToDB(article);
+  }
+};
+
+// Helper for initial IDB removal if needed, but here we just export placeholder init
+export const initDB = async () => {};

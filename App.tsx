@@ -6,7 +6,7 @@ import { ArticleCard } from './components/ArticleCard';
 import { NewsEditor } from './components/NewsEditor';
 import { AuthModal } from './components/AuthModal';
 import { CommentSection } from './components/CommentSection';
-import { getArticlesFromDB, addArticleToDB, updateArticleInDB, saveArticlesToDB } from './services/storageService';
+import { subscribeToArticles, addArticleToDB, updateArticleInDB, saveArticlesToDB } from './services/storageService';
 import { textToSpeech } from './services/geminiService';
 
 const DEFAULT_ARTICLES: Article[] = [
@@ -73,24 +73,21 @@ export default function App() {
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
 
   useEffect(() => {
-    async function load() {
-      try {
-        let dbArts = await getArticlesFromDB();
-        if (dbArts.length === 0) {
-          await saveArticlesToDB(DEFAULT_ARTICLES);
-          dbArts = DEFAULT_ARTICLES;
-        }
-        setArticles(dbArts);
-      } catch (err) { 
-        console.error("Load error:", err); 
-      } finally { 
-        setIsLoading(false); 
+    // Subscribe to real-time updates from Firebase
+    const unsubscribe = subscribeToArticles((updatedArticles) => {
+      if (updatedArticles.length === 0 && isLoading) {
+        // Only seed if actually empty in cloud on first load
+        saveArticlesToDB(DEFAULT_ARTICLES);
+      } else {
+        setArticles(updatedArticles);
+        setIsLoading(false);
       }
-    }
-    load();
+    });
+
+    return () => unsubscribe();
   }, []);
 
-  // עדכון הזמן הנוכחי כל דקה כדי לרענן מבזקים שתקפו
+  // Update current time every minute to refresh expired breaking news
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(Date.now());
@@ -161,7 +158,6 @@ export default function App() {
 
   const handlePublish = async (newArticle: Article) => {
     await addArticleToDB(newArticle);
-    setArticles(prev => [newArticle, ...prev]);
     setView('home');
   };
 
@@ -188,9 +184,17 @@ export default function App() {
       comments: [...(selectedArticle.comments || []), newComment] 
     };
     await updateArticleInDB(updated);
-    setArticles(prev => prev.map(a => a.id === updated.id ? updated : a));
-    setSelectedArticle(updated);
   };
+
+  // Synchronize selectedArticle state with the global articles list (updated via real-time subscription)
+  useEffect(() => {
+    if (selectedArticle) {
+      const latest = articles.find(a => a.id === selectedArticle.id);
+      if (latest) {
+        setSelectedArticle(latest);
+      }
+    }
+  }, [articles]);
 
   const handleDeleteComment = async (cid: string) => {
     if (!selectedArticle) return;
@@ -199,8 +203,6 @@ export default function App() {
       comments: (selectedArticle.comments || []).filter(c => c.id !== cid) 
     };
     await updateArticleInDB(updated);
-    setArticles(prev => prev.map(a => a.id === updated.id ? updated : a));
-    setSelectedArticle(updated);
   };
 
   if (isLoading) return (
@@ -245,7 +247,6 @@ export default function App() {
                     </span>
                   </span>
                 ))}
-                {/* Duplicate for seamless scrolling */}
                 {breakingNews.map(a => (
                   <span 
                     key={`${a.id}-clone`} 
