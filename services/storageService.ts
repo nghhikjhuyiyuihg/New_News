@@ -15,14 +15,7 @@ import {
 } from "firebase/firestore";
 import { Article } from '../types';
 
-/**
- * מדריך קצר להגדרת Firebase:
- * 1. היכנס ל-https://console.firebase.google.com/
- * 2. צור פרויקט חדש (למשל TrueNews)
- * 3. הוסף אפליקציית Web וקבל את ה-firebaseConfig
- * 4. בתפריט הצדדי בחר Build -> Firestore Database ולחץ על Create Database
- * 5. בלשונית Rules, שנה ל- allow read, write: if true; (רק לפיתוח ראשוני!)
- */
+// חשוב: עליך להחליף את הערכים כאן בערכים האמיתיים מהקונסול של Firebase!
 const firebaseConfig = {
   apiKey: "YOUR_API_KEY",
   authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
@@ -32,12 +25,25 @@ const firebaseConfig = {
   appId: "YOUR_APP_ID"
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const articlesRef = collection(db, "articles");
+let db: any;
+let articlesRef: any;
+
+try {
+  // בדיקה אם המשתמש שכח להזין את הפרטים
+  if (firebaseConfig.apiKey === "YOUR_API_KEY") {
+    console.warn("Firebase Config is not set. Using mock storage.");
+    // כאן אפשר להוסיף לוגיקה זמנית או פשוט לתת לאפליקציה לעלות בלי Firebase
+  } else {
+    const app = initializeApp(firebaseConfig);
+    db = getFirestore(app);
+    articlesRef = collection(db, "articles");
+  }
+} catch (e) {
+  console.error("Firebase initialization failed:", e);
+}
 
 export const getArticlesFromDB = async (): Promise<Article[]> => {
+  if (!articlesRef) return [];
   try {
     const q = query(articlesRef, orderBy("createdAt", "desc"));
     const querySnapshot = await getDocs(q);
@@ -48,8 +54,11 @@ export const getArticlesFromDB = async (): Promise<Article[]> => {
   }
 };
 
-// Real-time listener version - world-class synchronization
 export const subscribeToArticles = (callback: (articles: Article[]) => void) => {
+  if (!articlesRef) {
+    callback([]);
+    return () => {};
+  }
   const q = query(articlesRef, orderBy("createdAt", "desc"));
   return onSnapshot(q, (querySnapshot) => {
     const articles = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Article));
@@ -60,8 +69,8 @@ export const subscribeToArticles = (callback: (articles: Article[]) => void) => 
 };
 
 export const addArticleToDB = async (article: Article): Promise<void> => {
+  if (!articlesRef) return;
   const { id, ...data } = article;
-  // If we have an ID from the client, we use it, otherwise Firestore generates one
   if (id) {
     await setDoc(doc(db, "articles", id), data);
   } else {
@@ -70,6 +79,7 @@ export const addArticleToDB = async (article: Article): Promise<void> => {
 };
 
 export const updateArticleInDB = async (article: Article): Promise<void> => {
+  if (!db) return;
   const { id, ...data } = article;
   if (!id) return;
   const articleDoc = doc(db, "articles", id);
@@ -77,6 +87,7 @@ export const updateArticleInDB = async (article: Article): Promise<void> => {
 };
 
 export const removeArticleFromDB = async (id: string): Promise<void> => {
+  if (!db) return;
   await deleteDoc(doc(db, "articles", id));
 };
 
@@ -86,5 +97,4 @@ export const saveArticlesToDB = async (articles: Article[]): Promise<void> => {
   }
 };
 
-// Helper for initial IDB removal if needed, but here we just export placeholder init
 export const initDB = async () => {};

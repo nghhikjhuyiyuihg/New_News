@@ -1,9 +1,14 @@
 
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const getApiKey = () => {
+  return process.env.API_KEY || (window as any).process?.env?.API_KEY || "";
+};
+
+const ai = new GoogleGenAI({ apiKey: getApiKey() });
 
 export async function generateNewsSummary(content: string): Promise<string> {
+  if (!getApiKey()) return "מפתח API חסר. לא ניתן לייצר תקציר.";
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -20,6 +25,7 @@ export async function generateNewsSummary(content: string): Promise<string> {
 }
 
 export async function suggestArticleTitle(content: string): Promise<string> {
+  if (!getApiKey()) return "כותרת (חסר API Key)";
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -36,6 +42,7 @@ export async function suggestArticleTitle(content: string): Promise<string> {
 }
 
 export async function generateFullArticleContent(title: string): Promise<string> {
+  if (!getApiKey()) return "לא ניתן לייצר תוכן ללא מפתח API של Gemini.";
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
@@ -52,6 +59,7 @@ export async function generateFullArticleContent(title: string): Promise<string>
 }
 
 export async function generateAiImage(prompt: string): Promise<string | null> {
+  if (!getApiKey()) return null;
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
@@ -75,6 +83,7 @@ export async function generateAiImage(prompt: string): Promise<string | null> {
 }
 
 export async function textToSpeech(text: string): Promise<string | null> {
+  if (!getApiKey()) return null;
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
