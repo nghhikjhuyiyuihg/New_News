@@ -11,7 +11,7 @@ import { textToSpeech } from './services/geminiService';
 
 const DEFAULT_ARTICLES: Article[] = [
   {
-    id: '1',
+    id: 'default-1',
     title: 'מהפכת הבינה המלאכותית: האם הרובוטים בדרך להחליף את העיתונאים?',
     subtitle: 'מחקר חדש חושף כיצד כלי ה-AI משנים את פני המדיה העולמית.',
     content: 'עולם העיתונות עובר טלטלה משמעותית בשנה האחרונה. עם כניסתם של מודלים שפתיים מתקדמים, מערכות חדשות רבות החלו להטמיע כלים אוטומטיים ליצירת תוכן.',
@@ -23,7 +23,7 @@ const DEFAULT_ARTICLES: Article[] = [
     isBreaking: false
   },
   {
-    id: '2',
+    id: 'default-2',
     title: 'משבר הדיור: האם המחירים בדרך לירידה משמעותית?',
     subtitle: 'נתונים חדשים מראים האטה בשוק הנדל"ן המקומי.',
     content: 'אחרי שנים של עליות בלתי פוסקות, נראה כי שוק הנדל"ן מתחיל להראות סימני התקררות.',
@@ -73,21 +73,24 @@ export default function App() {
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
 
   useEffect(() => {
-    // Subscribe to real-time updates from Firebase
     const unsubscribe = subscribeToArticles((updatedArticles) => {
-      if (updatedArticles.length === 0 && isLoading) {
-        // Only seed if actually empty in cloud on first load
-        saveArticlesToDB(DEFAULT_ARTICLES);
+      if (updatedArticles.length === 0) {
+        // אם אין כלום גם בלוקאל וגם בענן, נטען ברירת מחדל
+        const savedLocal = localStorage.getItem('news_articles_backup');
+        if (!savedLocal || JSON.parse(savedLocal).length === 0) {
+          setArticles(DEFAULT_ARTICLES);
+        } else {
+          setArticles(JSON.parse(savedLocal));
+        }
       } else {
         setArticles(updatedArticles);
-        setIsLoading(false);
       }
+      setIsLoading(false);
     });
 
     return () => unsubscribe();
   }, []);
 
-  // Update current time every minute to refresh expired breaking news
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(Date.now());
@@ -186,7 +189,6 @@ export default function App() {
     await updateArticleInDB(updated);
   };
 
-  // Synchronize selectedArticle state with the global articles list (updated via real-time subscription)
   useEffect(() => {
     if (selectedArticle) {
       const latest = articles.find(a => a.id === selectedArticle.id);
@@ -226,7 +228,6 @@ export default function App() {
       />
       
       <main className="container mx-auto px-4 pt-24 max-w-6xl">
-        {/* Breaking News Ticker (סרגל זמן למבזקים) */}
         {breakingNews.length > 0 && view === 'home' && (
           <div className="mb-8 bg-white border border-red-100 rounded-2xl p-0.5 shadow-sm overflow-hidden flex items-center gap-4 group">
             <div className="bg-red-600 text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest animate-pulse flex-shrink-0 z-10 shadow-lg shadow-red-200">
@@ -237,19 +238,6 @@ export default function App() {
                 {breakingNews.map(a => (
                   <span 
                     key={a.id} 
-                    onClick={() => handleArticleClick(a)} 
-                    className="text-sm font-bold text-gray-800 hover:text-red-600 transition-colors flex items-center gap-3"
-                  >
-                    <span className="text-red-500 font-black">●</span>
-                    {a.title}
-                    <span className="text-gray-300 text-[10px] mr-2">
-                      {new Date(a.createdAt).toLocaleTimeString('he-IL', {hour: '2-digit', minute:'2-digit'})}
-                    </span>
-                  </span>
-                ))}
-                {breakingNews.map(a => (
-                  <span 
-                    key={`${a.id}-clone`} 
                     onClick={() => handleArticleClick(a)} 
                     className="text-sm font-bold text-gray-800 hover:text-red-600 transition-colors flex items-center gap-3"
                   >
@@ -351,9 +339,6 @@ export default function App() {
           100% { transform: translateX(100%); }
         }
         .animate-ticker-scroll {
-          animation: ticker-scroll 40s linear infinite;
-        }
-        [dir="rtl"] .animate-ticker-scroll {
           animation: ticker-scroll 40s linear infinite;
         }
       `}</style>
